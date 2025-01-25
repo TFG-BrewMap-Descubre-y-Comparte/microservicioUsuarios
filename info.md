@@ -36,6 +36,3 @@ SCHEMA
 	
 	Creamos una clase User(BaseModel):
 		Los atributos que queramos que tenga el modelo
-
-
-
