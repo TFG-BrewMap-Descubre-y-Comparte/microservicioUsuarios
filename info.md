@@ -3,7 +3,11 @@ MICROUSERS Guía
 	Uvicorn fastAPI 
 	
 	Ejecutar: 
+	python -m venv venv (si no hay venv)
+
 	.\venv\Scripts\activate 
+
+	pip install -r requirements.txt (si no está instalado todo)
 	
 	uvicorn main:app --reload
 	
