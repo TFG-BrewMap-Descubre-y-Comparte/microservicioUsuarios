@@ -1,81 +1,134 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from starlette.status import HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR
-from schema.user_schema import UserSchema
-from config.db import engine
-from model.users import users
-from sqlalchemy import select
+from services.user_service import get_all_users, get_user_by_id, create_user, update_user, delete_user
+from services.auth_service import get_current_user, authenticate_user, create_access_token
 from werkzeug.security import generate_password_hash, check_password_hash
-user = APIRouter()
+from schema.user_schema import UserSchema, DataUser, UserResponse, ErrorResponse, MessageResponse
+from starlette.status import HTTP_201_CREATED, HTTP_500_INTERNAL_SERVER_ERROR
 
-#Esquemas de respuesta
-class MessageResponse(BaseModel):
-    message: str
+user_router = APIRouter()
 
-class ErrorResponse(BaseModel):
-    error: str
-
-
-#...............................................................
-@user.get("/api/v1/users", 
-    response_model=list[UserSchema],
-    responses={
-        200: {"description": "Lista de usuarios", "model": list[UserSchema]},
-        500: {"description": "Error al obtener los usuarios", "model": ErrorResponse},
-    })
-def get_users():
+# ............................................................... GET ALL
+@user_router.get("/api/v1/users", 
+    response_model=list[UserResponse],  # Usamos UserResponse en lugar de UserSchema
+    responses={200: {"description": "Lista de usuarios", "model": list[UserResponse]}, 500: {"description": "Error al obtener los usuarios", "model": ErrorResponse}})
+def get_users(current_user: dict = Depends(get_current_user)):  # Dependencia para verificar token
     try:
-        with engine.begin() as connection:  # Abre una transacción explícita
-            result = connection.execute(select(users))  # Ejecuta la consulta de usuarios
-            users_list = [dict(row._mapping) for row in result]  # Convierte las filas a diccionarios
-
-        # Devuelve los usuarios como una lista de diccionarios
-        return JSONResponse(content=users_list, status_code=200)
+        users_list = get_all_users()
+        # Convertir los usuarios a UserResponse para eliminar contraseñas
+        users_response = [UserResponse(**user) for user in users_list]
+        return JSONResponse(content=users_response, status_code=200)
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500) 
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
-
-# ...............................................................
-
-
-@user.post("/api/v1/insert/user", 
-           response_model=MessageResponse,
-    responses={
-        201: {"description": "Usuario creado correctamente", "model": MessageResponse}, # 201 es el código de estado para una inserción exitosa
-        500: {"description": "Error al crear el usuario", "model": ErrorResponse}, # 500 es el código de estado para un error
-    },) # 201 es el código de estado para una inserción exitosa
-def create_user(data_user: UserSchema):    
+# ............................................................... GET ONE
+@user_router.get("/api/v1/user/{id_user}", 
+    response_model=UserResponse,  
+    responses={200: {"description": "Usuario encontrado", "model": UserResponse}, 404: {"description": "Usuario no encontrado", "model": ErrorResponse}})
+def get_user(id_user: str, current_user: dict = Depends(get_current_user)):  # Dependencia para verificar token
     try:
-        # Convierte el objeto recibido en un diccionario
+        # el usuario existe
+        user_data = get_user_by_id(id_user)
+        if user_data is None:
+            return JSONResponse(content={"error": "Usuario no encontrado"}, status_code=404)
+        
+        # UserResponse
+        user_response = UserResponse(**user_data)
+        return JSONResponse(content=user_response.dict(), status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# ............................................................... INSERT
+@user_router.post("/api/v1/insert/user", 
+    response_model=MessageResponse, 
+    responses={201: {"description": "Usuario creado correctamente", "model": MessageResponse}, 500: {"description": "Error al crear el usuario", "model": ErrorResponse}})
+def create_user_route(data_user: UserSchema):  
+    try:
+        existing_user = get_user_by_id(data_user.username)
+        if existing_user:
+            return JSONResponse(content={"error": "El usuario ya existe"}, status_code=400)
+
+        # hasheo de la contraseña
         new_user = data_user.dict()
-        # Encripta la contraseña, se le pasa la contraseña y el algoritmo con el que se va a encriptar, 30 es la recursividad de codificación, cuanto mas alto mas seguro pero menos eficiente
-        new_user["password"] = generate_password_hash(
-            new_user["password"], method="pbkdf2:sha256", salt_length=30
-        )
-        # Elimina el id_user si está presente, ya que es autoincremental
+        new_user["password"] = generate_password_hash(new_user["password"], method="pbkdf2:sha256", salt_length=30)
         if "id_user" in new_user:
             del new_user["id_user"]
-        print("Datos que se insertarán:", new_user)
-        # Abre una transacción explícita
-        with engine.begin() as connection:
-            # Ejecuta la inserción usando la conexión transaccional
-            result = connection.execute(users.insert().values(new_user))
-            print("Resultado de la inserción:", result.rowcount)
-        # Devuelve un mensaje de éxito
-        return JSONResponse(
-            status_code=HTTP_201_CREATED,
-            content={"message": "Usuario creado correctamente"}
-        )
+
+        # Crea el usuario en la base de datos
+        create_user(new_user)
+
+        return JSONResponse(status_code=HTTP_201_CREATED, content={"message": "Usuario creado correctamente"})
     except Exception as e:
-        return JSONResponse(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"error": str(e)}
+        return JSONResponse(status_code=HTTP_500_INTERNAL_SERVER_ERROR, content={"error": str(e)})
+
+# ............................................................... LOGIN
+@user_router.post("/api/v1/login/user", response_model=UserResponse)
+def login_user(data_user: DataUser):
+    try:
+        # Verifica si el usuario existe
+        user_data = authenticate_user(data_user.username, data_user.password)
+        if not user_data:
+            return JSONResponse(content={"error": "Usuario o contraseña incorrectos"}, status_code=401)
+        
+        # Crea el token JWT
+        access_token = create_access_token(data={"sub": user_data["username"], "id_user": user_data["id_user"]})
+        
+        # Crea la respuesta
+        user_response = UserResponse(
+            id_user=user_data["id_user"],
+            username=user_data["username"],
+            name=user_data["name"],
+            email=user_data["email"],
+            role=user_data["role"]
         )
+        
+        return JSONResponse(content={"user": user_response.dict(), "access_token": access_token}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
+# ............................................................... UPDATE
+@user_router.put("/api/v1/update/user/{id}", 
+    response_model=UserResponse,  # Cambiado a UserResponse
+    responses={200: {"description": "Usuario actualizado", "model": UserResponse}, 404: {"description": "Usuario no encontrado", "model": ErrorResponse}, 500: {"description": "Error al actualizar el usuario", "model": ErrorResponse}})
+def update_user_route(id: int, data_user: UserSchema, current_user: dict = Depends(get_current_user)):  # Dependencia para verificar token
+    try:
+        # Comprobación si el usuario existe
+        existing_user = get_user_by_id(id)
+        if existing_user is None:
+            return JSONResponse(content={"error": "Usuario no encontrado"}, status_code=404)
 
+        # Cifra la contraseña antes de actualizarla
+        hashed_password = generate_password_hash(data_user.password, method="pbkdf2:sha256", salt_length=30)
 
-#...............................................................
-@user.put("/api/v1/update/user/{id}")
-def update_user(id: int, data_user: UserSchema):
-    print(data_user)
+        # Actualiza el usuario
+        update_user(id, {
+            "name": data_user.name,
+            "email": data_user.email,
+            "username": data_user.username,
+            "password": hashed_password,
+            "role": data_user.role
+        })
+        
+        # Devuelve el usuario actualizado sin la contraseña
+        updated_user = get_user_by_id(id)
+        user_response = UserResponse(**updated_user)
+        return JSONResponse(content=user_response.dict(), status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# ............................................................... DELETE
+@user_router.delete("/api/v1/delete/user/{id}", 
+    responses={200: {"description": "Usuario eliminado exitosamente"}, 404: {"description": "Usuario no encontrado", "model": ErrorResponse}, 500: {"description": "Error al eliminar el usuario", "model": ErrorResponse}})
+def delete_user_route(id: int, current_user: dict = Depends(get_current_user)):  # Dependencia para verificar token
+    try:
+        # Comprobación si el usuario existe
+        existing_user = get_user_by_id(id)
+        if existing_user is None:
+            return JSONResponse(content={"error": "Usuario no encontrado"}, status_code=404)
+
+        # Elimina el usuario
+        delete_user(id)
+        return JSONResponse(content={"message": "Usuario eliminado exitosamente"}, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
