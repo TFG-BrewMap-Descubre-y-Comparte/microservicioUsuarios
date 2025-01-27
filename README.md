@@ -7,9 +7,15 @@ pip install -r requirements -> instalar dependencias para el entorno virtual
 
 cd /ruta/del/proyecto
 
+python -m venv venv (si no hay venv)
+
 Ejecutar el entorno virtual: 
   -.\venv\Scripts\activate  -> Windows
   - source venv/bin/activate -> Linux
+
+Instalar el entorno: 
+pip install -r requirements.txt (si no está instalado todo)
+
 
 Ejecutar la aplicación: 
   - uvicorn main:app --reload
