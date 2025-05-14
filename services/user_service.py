@@ -19,12 +19,14 @@ def get_user_by_id(id_user: str):
 
 def create_user(data_user: dict):
     """Crea un nuevo usuario en la base de datos"""
-    data_user["password"] = generate_password_hash(data_user["password"], method="pbkdf2:sha256", salt_length=30)
+    # Hasheamos solo aquí
+    hashed_password = generate_password_hash(data_user["password"], method="pbkdf2:sha256", salt_length=30)
+    data_user["password"] = hashed_password
     
     with engine.begin() as connection:
         result = connection.execute(users.insert().values(data_user))
         return result
-
+        
 def update_user(id_user: int, data_user: dict):
     """Actualiza los datos de un usuario existente"""
     if "password" in data_user:

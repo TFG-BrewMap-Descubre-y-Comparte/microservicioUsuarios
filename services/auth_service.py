@@ -6,6 +6,8 @@ from config.db import engine
 from model.users import users
 from werkzeug.security import check_password_hash
 from fastapi.security import OAuth2PasswordBearer
+from pprint import pprint
+
 
 SECRET_KEY = "mi_clave_secreta_super_segura"
 ALGORITHM = "HS256"
@@ -47,6 +49,14 @@ def authenticate_user(username: str, password: str):
             return None
 
         user_data = dict(result._mapping)
+        print("Usuario encontrado:")
+        pprint(user_data)
+
+        print(f"Comparando password enviada: {password}")
+        print(f"Contra hash guardado: {user_data['password']}")
+
         if not check_password_hash(user_data["password"], password):
+            print("Contraseña incorrecta")
             return None
+        print("Contraseña válida")
         return user_data

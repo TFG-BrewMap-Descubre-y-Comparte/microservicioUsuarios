@@ -49,32 +49,26 @@ def create_user_route(data_user: UserSchema):
         if existing_user:
             return JSONResponse(content={"error": "El usuario ya existe"}, status_code=400)
 
-        # hasheo de la contraseña
         new_user = data_user.dict()
-        new_user["password"] = generate_password_hash(new_user["password"], method="pbkdf2:sha256", salt_length=30)
         if "id_user" in new_user:
             del new_user["id_user"]
 
-        # Crea el usuario en la base de datos
+        # Crea el usuario (y se hashea dentro de esa función)
         create_user(new_user)
 
         return JSONResponse(status_code=HTTP_201_CREATED, content={"message": "Usuario creado correctamente"})
     except Exception as e:
         return JSONResponse(status_code=HTTP_500_INTERNAL_SERVER_ERROR, content={"error": str(e)})
-
 # ............................................................... LOGIN
 @user_router.post("/api/v1/login/user", response_model=UserResponse)
 def login_user(data_user: DataUser):
     try:
-        # Verifica si el usuario existe
         user_data = authenticate_user(data_user.username, data_user.password)
         if not user_data:
             return JSONResponse(content={"error": "Usuario o contraseña incorrectos"}, status_code=401)
         
-        # Crea el token JWT
         access_token = create_access_token(data={"sub": user_data["username"], "id_user": user_data["id_user"]})
         
-        # Crea la respuesta
         user_response = UserResponse(
             id_user=user_data["id_user"],
             username=user_data["username"],
@@ -86,6 +80,7 @@ def login_user(data_user: DataUser):
         return JSONResponse(content={"user": user_response.dict(), "access_token": access_token}, status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
 
 # ............................................................... UPDATE
 @user_router.put("/api/v1/update/user/{id}", 
