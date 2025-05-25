@@ -67,7 +67,11 @@ def login_user(data_user: DataUser):
         if not user_data:
             return JSONResponse(content={"error": "Usuario o contraseña incorrectos"}, status_code=401)
         
-        access_token = create_access_token(data={"sub": user_data["username"], "id_user": user_data["id_user"]})
+        access_token = create_access_token(data={
+            "sub": user_data["username"],
+            "id_user": user_data["id_user"],
+            "role": user_data["role"]  
+        })
         
         user_response = UserResponse(
             id_user=user_data["id_user"],

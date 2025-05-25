@@ -35,11 +35,12 @@ def get_current_user(token: str):
     payload = verify_token(token)
     username = payload.get("sub")
     user_id = payload.get("id_user")
+    role = payload.get("role")
 
-    if username is None or user_id is None:
+    if username is None or user_id is None or role is None:
         raise HTTPException(status_code=401, detail="Token inválido")
     
-    return {"username": username, "id_user": user_id}
+    return {"username": username, "id_user": user_id, "role": role}
 
 def authenticate_user(username: str, password: str):
     """Verifica el usuario y la contraseña"""
