@@ -127,3 +127,24 @@ def delete_user_route(id: int, current_user: dict = Depends(get_current_user)): 
         return JSONResponse(content={"message": "Usuario eliminado exitosamente"}, status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@user_router.get("/api/internal/user/{id_user}", 
+    response_model=UserResponse,
+    responses={
+        200: {"description": "Usuario encontrado", "model": UserResponse},
+        404: {"description": "Usuario no encontrado", "model": ErrorResponse}
+    })
+def get_user_internal(id_user: str):
+    """
+    Ruta interna que devuelve datos de un usuario sin requerir autenticación.
+    Útil para llamadas internas entre microservicios.
+    """
+    try:
+        user_data = get_user_by_id(id_user)
+        if user_data is None:
+            return JSONResponse(content={"error": "Usuario no encontrado"}, status_code=404)
+
+        return JSONResponse(content=UserResponse(**user_data).dict(), status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
