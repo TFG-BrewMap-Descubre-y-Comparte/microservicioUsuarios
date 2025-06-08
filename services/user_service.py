@@ -91,3 +91,19 @@ def send_registration_email(to_email: str, username: str):
         print("Error de autenticación: verifica tu EMAIL_USER y EMAIL_PASSWORD")
     except Exception as e:
         print("Error al enviar correo:", str(e))
+
+def get_user_by_username(username: str):
+    """Obtiene un usuario por su nombre de usuario"""
+    with engine.begin() as connection:
+        result = connection.execute(select(users).where(users.c.username == username)).first()
+        if result:
+            return dict(result._mapping)
+        return None
+
+def get_user_by_email(email: str):
+    """Obtiene un usuario por su email"""
+    with engine.begin() as connection:
+        result = connection.execute(select(users).where(users.c.email == email)).first()
+        if result:
+            return dict(result._mapping)
+        return None

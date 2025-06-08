@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
-from services.user_service import get_all_users, get_user_by_id, create_user, update_user, delete_user
+from services.user_service import get_all_users, get_user_by_id, create_user, update_user, delete_user, get_user_by_username, get_user_by_email
 from services.auth_service import get_current_user, authenticate_user, create_access_token
 from werkzeug.security import generate_password_hash, check_password_hash
 from schema.user_schema import UserSchema, DataUser, UserResponse, ErrorResponse, MessageResponse
@@ -42,12 +42,30 @@ def get_user(id_user: str, current_user: dict = Depends(get_current_user)):  # D
 # ............................................................... INSERT
 @user_router.post("/api/v1/insert/user", 
     response_model=MessageResponse, 
-    responses={201: {"description": "Usuario creado correctamente", "model": MessageResponse}, 500: {"description": "Error al crear el usuario", "model": ErrorResponse}})
+    responses={201: {"description": "Usuario creado correctamente", "model": MessageResponse}, 
+        400: {"description": "El usuario ya existe", "model": ErrorResponse},
+        500: {"description": "Error al crear el usuario", "model": ErrorResponse}})
 def create_user_route(data_user: UserSchema):  
     try:
-        existing_user = get_user_by_id(data_user.username)
-        if existing_user:
-            return JSONResponse(content={"error": "El usuario ya existe"}, status_code=400)
+
+        existing_user = get_user_by_username(data_user.username)
+        existing_email = get_user_by_email(data_user.email)
+        
+        if existing_user and existing_email:
+            return JSONResponse(
+                content={"error": "El nombre de usuario y el correo electrónico ya están registrados"},
+                status_code=400
+            )
+        elif existing_user:
+            return JSONResponse(
+                content={"error": "El nombre de usuario ya está registrado"},
+                status_code=400
+            )
+        elif existing_email:
+            return JSONResponse(
+                content={"error": "El correo electrónico ya está registrado"},
+                status_code=400
+            )
 
         new_user = data_user.dict()
         if "id_user" in new_user:
